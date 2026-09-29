@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Injectable Production Tracker</title>
+<style>
+  :root {
+    color-scheme: light;
+    --page:           #f9f9f7;
+    --surface-1:      #fcfcfb;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #898781;
+    --grid:           #e1e0d9;
+    --baseline:       #c3c2b7;
+    --border:         rgba(11,11,11,0.10);
+    --series-1:       #2a78d6;
+    --series-2:       #eb6834;
+    --series-3:       #1baf7a;
+    --series-4:       #eda100;
+    --seq-250:        #86b6ef;
+    --seq-150:        #b7d3f6;
+    --status-good:    #0ca30c;
+    --status-warn:    #fab219;
+    --status-serious: #ec835a;
+    --status-crit:    #d03b3b;
+    --delta-good:     #006300;
+    --accent:         #2a78d6;
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page:           #0d0d0d;
+    --surface-1:      #1a1a19;
+    --text-primary:   #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted:     #898781;
+    --grid:           #2c2c2a;
+    --baseline:       #383835;
+    --border:         rgba(255,255,255,0.10);
+    --series-1:       #3987e5;
+    --series-2:       #d95926;
+    --series-3:       #199e70;
+    --series-4:       #c98500;
+    --seq-250:        #1c5cab;
+    --seq-150:        #184f95;
+    --delta-good:     #0ca30c;
+    --accent:         #3987e5;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --page:           #0d0d0d;
+      --surface-1:      #1a1a19;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted:     #898781;
+      --grid:           #2c2c2a;
+      --baseline:       #383835;
+      --border:         rgba(255,255,255,0.10);
+      --series-1:       #3987e5;
+      --series-2:       #d95926;
+      --series-3:       #199e70;
+      --series-4:       #c98500;
+      --seq-250:        #1c5cab;
+      --seq-150:        #184f95;
+      --delta-good:     #0ca30c;
+      --accent:         #3987e5;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--text-primary);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 14px;
+    line-height: 1.45;
+  }
+  .app { max-width: 1180px; margin: 0 auto; padding: 20px 24px 60px; }
+  header.top {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 16px; margin-bottom: 18px;
+  }
+  header.top h1 { font-size: 21px; font-weight: 650; margin: 0 0 2px; letter-spacing: -0.01em; }
+  header.top .sub { color: var(--text-secondary); font-size: 13px; }
+  .hdr-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; max-width: 620px; }
+  .save-status { font-size: 12px; color: var(--text-secondary); display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; margin-right: 2px; }
+  .save-status .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--status-good); display: inline-block; flex: none; }
+  .save-status.session .dot { background: var(--status-warn); }
+  .save-status.flash { color: var(--delta-good); }
+  .sync-status { font-size: 12px; color: var(--text-secondary); display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .sync-status .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+  .sync-status.live .dot { background: var(--status-good); }
+  .sync-status.live { color: var(--delta-good); }
+  .sync-status.syncing .dot { background: var(--accent); animation: pulse 1s ease-in-out infinite; }
+  .sync-status.error .dot { background: var(--status-crit); }
+  .sync-status.error { color: var(--status-crit); }
+  .sync-status.snapshot .dot { background: var(--text-muted); }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+  .btn {
+    appearance: none; border: 1px solid var(--border); background: var(--surface-1);
+    color: var(--text-primary); border-radius: 8px; padding: 7px 13px;
+    font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap;
+  }
+  .btn:hover { border-color: var(--baseline); }
+  .btn.primary { background: var(--accent); color: #fff; border-color: transparent; font-weight: 600; }
+  .btn.small { padding: 4px 9px; font-size: 12px; border-radius: 6px; }
+  .btn.danger-ghost { color: var(--status-crit); }
+
+  nav.tabs {
+    display: flex; gap: 2px; border-bottom: 1px solid var(--grid);
+    margin-bottom: 16px; overflow-x: auto;
+  }
+  nav.tabs button {
+    appearance: none; background: none; border: none; border-bottom: 2px solid transparent;
+    padding: 9px 14px 10px; font: inherit; font-size: 13.5px; color: var(--text-secondary);
+    cursor: pointer; white-space: nowrap;
+  }
+  nav.tabs button:hover { color: var(--text-primary); }
+  nav.tabs button.active { color: var(--text-primary); font-weight: 600; border-bottom-color: var(--accent); }
+
+  .filters {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 16px;
+  }
+  .filters .flabel { color: var(--text-muted); font-size: 12px; margin-right: 2px; }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface-1); }
+  .seg button {
+    appearance: none; border: none; background: none; padding: 6px 11px; font: inherit;
+    font-size: 12.5px; color: var(--text-secondary); cursor: pointer;
+  }
+  .seg button + button { border-left: 1px solid var(--border); }
+  .seg button.active { background: var(--accent); color: #fff; font-weight: 600; }
+
+  .grid { display: grid; gap: 14px; }
+  .kpis { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-bottom: 14px; }
+  .two-col { grid-template-columns: 1fr 1fr; }
+  @media (max-width: 860px) { .two-col { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--surface-1); border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px 18px;
+  }
+  .card h3 { margin: 0 0 2px; font-size: 14px; font-weight: 600; }
+  .card .csub { color: var(--text-muted); font-size: 12px; margin-bottom: 10px; }
+  .card.full { grid-column: 1 / -1; }
+
+  .tile .tlabel { font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; }
+  .tile .tvalue { font-size: 26px; font-weight: 600; letter-spacing: -0.01em; }
+  .tile .tvalue.hero { font-size: 48px; line-height: 1.1; }
+  .tile .tdelta { font-size: 12px; margin-top: 2px; color: var(--text-secondary); }
+  .tile .tdelta .up   { color: var(--delta-good); font-weight: 600; }
+  .tile .tdelta .down { color: var(--status-crit); font-weight: 600; }
+  .tile .spark { margin-top: 8px; }
+
+  .meter { height: 8px; border-radius: 4px; background: var(--seq-150); overflow: hidden; margin-top: 10px; }
+  .meter > div { height: 100%; border-radius: 4px 0 0 4px; background: var(--accent); }
+
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; margin: 4px 0 8px; font-size: 12px; color: var(--text-secondary); }
+  .legend .li { display: inline-flex; align-items: center; gap: 6px; }
+  .legend .sw { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+  .legend .ln { width: 14px; height: 2.5px; border-radius: 2px; display: inline-block; }
+  .legend .ln.dashed { background: repeating-linear-gradient(90deg, currentColor 0 3px, transparent 3px 6px); height: 2.5px; }
+
+  .chart-wrap { position: relative; }
+  .chart-wrap svg { display: block; }
+  svg text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+
+  #tooltip {
+    position: fixed; z-index: 50; pointer-events: none; display: none;
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 11px; font-size: 12px; box-shadow: 0 4px 14px rgba(0,0,0,0.13);
+    max-width: 260px;
+  }
+  #tooltip .tt-title { color: var(--text-muted); font-size: 11px; margin-bottom: 4px; }
+  #tooltip .tt-row { display: flex; align-items: center; gap: 7px; margin-top: 2px; }
+  #tooltip .tt-key { width: 12px; height: 2.5px; border-radius: 2px; flex: none; }
+  #tooltip .tt-val { font-weight: 650; color: var(--text-primary); }
+  #tooltip .tt-name { color: var(--text-secondary); }
+
+  table.data { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.data th {
+    text-align: left; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--text-muted); font-weight: 600; padding: 7px 10px; border-bottom: 1px solid var(--grid);
+    white-space: nowrap;
+  }
+  table.data td { padding: 7px 10px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+  table.data td.num, table.data th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  table.data tr:hover td { background: color-mix(in srgb, var(--accent) 5%, transparent); }
+  .scroll-x { overflow-x: auto; }
+
+  .pill { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600; padding: 2px 8px; border-radius: 999px; }
+  .pill.released { color: var(--delta-good); background: color-mix(in srgb, var(--status-good) 12%, transparent); }
+  .pill.rejected { color: var(--status-crit); background: color-mix(in srgb, var(--status-crit) 12%, transparent); }
+  .pill.pending  { color: var(--text-secondary); background: color-mix(in srgb, var(--text-muted) 15%, transparent); }
+  .pill.validation { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+  .pill.scheduled  { color: var(--text-muted); background: transparent; border: 1px dashed var(--baseline); }
+
+  form.entry { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; align-items: end; }
+  form.entry .fld label { display: block; font-size: 11.5px; color: var(--text-secondary); margin-bottom: 3px; }
+  form.entry input, form.entry select, .assump input, .tgt-input {
+    width: 100%; padding: 7px 9px; font: inherit; font-size: 13px;
+    border: 1px solid var(--border); border-radius: 7px;
+    background: var(--page); color: var(--text-primary);
+  }
+  form.entry input:focus, form.entry select:focus, .assump input:focus, .tgt-input:focus {
+    outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent); outline-offset: 0;
+  }
+  .form-note { font-size: 12px; color: var(--text-muted); margin-top: 8px; }
+
+  .assump { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+  .assump .fld label { display: block; font-size: 11.5px; color: var(--text-secondary); margin-bottom: 3px; }
+  .assump .unit { font-size: 11px; color: var(--text-muted); margin-left: 4px; }
+
+  .note { font-size: 12px; color: var(--text-muted); }
+  .mt8 { margin-top: 8px; } .mt12 { margin-top: 12px; } .mt16 { margin-top: 16px; }
+  .row-between { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  .hidden { display: none !important; }
+
+  /* ---- Weekly report ---- */
+  .report-body { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 26px 30px; }
+  .rep-head { display: flex; justify-content: space-between; gap: 16px; border-bottom: 2px solid var(--text-primary); padding-bottom: 12px; margin-bottom: 16px; }
+  .rep-title { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
+  .rep-sub { color: var(--text-secondary); font-size: 13px; margin-top: 2px; }
+  .rep-meta { text-align: right; font-size: 11.5px; color: var(--text-muted); }
+  .rep-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 18px; }
+  .rep-kpi { border: 1px solid var(--grid); border-radius: 8px; padding: 8px 10px; }
+  .rep-kpi-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+  .rep-kpi-value { font-size: 19px; font-weight: 650; margin-top: 2px; }
+  .rep-kpi-sub { font-size: 10.5px; color: var(--text-secondary); margin-top: 1px; }
+  .rep-sec { margin-bottom: 18px; }
+  .rep-sec-title { font-size: 13px; font-weight: 700; margin-bottom: 6px; }
+  .rep-table { font-size: 12px; }
+  .rep-table th { font-size: 10.5px; padding: 5px 8px; }
+  .rep-table td { padding: 5px 8px; white-space: normal; }
+  .rep-foot { font-size: 10.5px; color: var(--text-muted); border-top: 1px solid var(--grid); padding-top: 8px; }
+  @media print {
+    :root { color-scheme: light; }
+    body { background: #fff; }
+    body * { visibility: hidden; }
+    #report, #report * { visibility: visible; }
+    #report { position: absolute; left: 0; top: 0; width: 100%; }
+    .report-body { border: none; border-radius: 0; padding: 0; background: #fff; }
+    .rep-sec { break-inside: avoid; }
+    .rep-kpis { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div>
+      <h1>Injectable Production Tracker</h1>
+      <div class="sub">PerfectionRx sterile fill–finish &middot; auto-syncing from the Sterile Production Log &middot; target 13,000 units/wk</div>
+    </div>
+    <div class="hdr-right">
+      <span id="sync-status" class="sync-status snapshot" title="Live sync status with the Sterile Production Log"></span>
+      <button class="btn" id="btn-refresh" title="Pull the latest numbers from the Sterile Production Log">↻ Refresh</button>
+      <span id="save-status" class="save-status" title="Where your changes are being kept"></span>
+      <button class="btn primary" id="btn-save" title="Download a data file with all batches, cost assumptions and targets">Save data</button>
+      <button class="btn" id="btn-load" title="Load a previously saved data file">Load data</button>
+      <input type="file" id="file-load" accept=".json,application/json" class="hidden">
+      <button class="btn" id="btn-export" title="Export the batch log as CSV">Export CSV</button>
+      <button class="btn" id="btn-import" title="Import a batch-log CSV">Import CSV</button>
+      <input type="file" id="file-import" accept=".csv" class="hidden">
+      <button class="btn" id="btn-theme" title="Toggle light/dark">◐</button>
+    </div>
+  </header>
+
+  <nav class="tabs" id="tabs">
+    <button data-tab="dashboard" class="active">Dashboard</button>
+    <button data-tab="batches">Batch Log</button>
+    <button data-tab="costs">Costs</button>
+    <button data-tab="skupipe">SKU Pipeline</button>
+    <button data-tab="targets">Targets &amp; Forecast</button>
+    <button data-tab="report">Weekly Report</button>
+  </nav>
+
+  <section id="tab-dashboard"></section>
+  <section id="tab-batches" class="hidden"></section>
+  <section id="tab-costs" class="hidden"></section>
+  <section id="tab-skupipe" class="hidden"></section>
+  <section id="tab-targets" class="hidden"></section>
+  <section id="tab-report" class="hidden"></section>
+</div>
+<div id="tooltip"></div>
+<script src="js/config.js"></script>
+<script src="js/data.js"></script>
+<script src="js/snapshot.js"></script>
+<script src="js/live.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/views1.js"></script>
+<script src="js/views2.js"></script>
+</body>
+</html>

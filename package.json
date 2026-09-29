@@ -1,0 +1,9 @@
+{
+  "name": "injectable-production-tracker",
+  "version": "1.0.0",
+  "description": "Live sterile injectable production dashboard (static, GitHub Pages).",
+  "scripts": {
+    "start": "npx --yes serve ."
+  },
+  "license": "MIT"
+}
