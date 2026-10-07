@@ -11,10 +11,10 @@ function activeSkus() {
   for (const b of batches) {
     if (b.strength == null) continue;
     const k = skuKey(b);
-    if (!m.has(k)) m.set(k, { line: b.line, strength: b.strength, addConc: b.addConc, unitVol: b.unitVol, fillVol: b.fillVol, theo: b.theo || DEFAULT_THEO, n: 0 });
+    if (!m.has(k)) m.set(k, { line: b.line, strength: b.strength, addConc: b.addConc, niac: b.niac, dexp: b.dexp, unitVol: b.unitVol, fillVol: b.fillVol, theo: b.theo || DEFAULT_THEO, n: 0 });
     m.get(k).n++;
   }
-  return [...m.values()].sort((a, b) => a.line < b.line ? -1 : a.line > b.line ? 1 : a.strength - b.strength);
+  return [...m.values()].sort((a, b) => (LINE_ORDER[a.line] - LINE_ORDER[b.line]) || (a.strength - b.strength) || ((a.unitVol || 0) - (b.unitVol || 0)));
 }
 
 function renderCosts() {
@@ -28,6 +28,8 @@ function renderCosts() {
     ["semaPerG", "Semaglutide API", "$/g"],
     ["glyPerKg", "Glycine", "$/kg"],
     ["b12PerG", "Vitamin B12", "$/g"],
+    ["niacPerG", "Niacinamide (B3)", "$/g"],
+    ["dexpPerG", "Dexpanthenol (B5)", "$/g"],
     ["wfiPerL", "Bacteriostatic WFI", "$/L"],
     ["vial", "Vial", "$/unit"],
     ["stopper", "Stopper", "$/unit"],
@@ -65,9 +67,10 @@ function renderCosts() {
   const chData = skus.map(s => {
     const bc = batchCost(s);
     const units = s.theo;
+    const strTxt = isB35(s) ? s.strength + "/" + s.niac + "/" + s.dexp : s.strength + "/" + s.addConc;
     return {
-      label: LINES[s.line].short.replace("Tirzepatide", "TZ") + " " + s.strength + "/" + s.addConc,
-      tipTitle: LINES[s.line].name + " " + s.strength + "/" + s.addConc + " mg/mL · " + s.unitVol + " mL vial",
+      label: displayName(s),
+      tipTitle: LINES[s.line].name + " " + strTxt + " mg/mL · " + s.unitVol + " mL vial · " + fulfillmentName(s),
       parts: COST_PARTS.map(p => ({ name: p.name, value: bc[p.key] / units, color: cssVar(p.colorVar) })),
     };
   });
@@ -86,9 +89,10 @@ function renderCosts() {
   for (const s of skus) {
     const bc = batchCost(s); const units = s.theo;
     const apiMg = s.strength * (s.fillVol || DEFAULT_FILL_VOL);
+    const strTxt = isB35(s) ? s.strength + "/" + s.niac + "/" + s.dexp : s.strength + "/" + s.addConc;
     const tr = document.createElement("tr");
     const vals = [
-      LINES[s.line].name + " " + s.strength + "/" + s.addConc + " mg/mL",
+      (NAME_MODE === "fulfillment" ? fulfillmentName(s) : LINES[s.line].name + " " + strTxt + " mg/mL"),
       s.unitVol + " mL (fill " + s.fillVol + ")",
       apiMg.toFixed(1) + " mg",
       fmtMoney(bc.api / units), fmtMoney(bc.materials / units),
@@ -422,7 +426,7 @@ function renderSkuPipeline() {
   const prodCols = prod.cols.map(w => ({ key: w, label: fmtDateShort(w) }));
   requestAnimationFrame(() => {
     if (!prodRows.length || !prodCols.length) { ch1.appendChild(hEl("div", "note", "No production in range.")); return; }
-    heatmap(ch1, prodRows, prodCols, (k, w) => prod.get(k, w), { fmt: fmtInt, colTip: c => fmtWeek(c.key) });
+    heatmap(ch1, prodRows, prodCols, (k, w) => prod.get(k, w), { fmt: fmtInt, colTip: c => fmtWeek(c.key), leftPad: 200 });
   });
 
   // Daily releases by SKU — actual (blue) + expected/scheduled (yellow), windowed
@@ -463,22 +467,152 @@ function renderSkuPipeline() {
   const relCols = windowDays.map(d => ({ key: d, label: fmtDateShort(d) }));
   requestAnimationFrame(() => {
     if (!relRows.length || !relCols.length) { ch2.appendChild(hEl("div", "note", "No releases or scheduled lots in range.")); return; }
-    heatmap(ch2, relRows, relCols, cellVal, { fmt: fmtInt, colTip: c => fmtDateLong(c.key) });
+    heatmap(ch2, relRows, relCols, cellVal, { fmt: fmtInt, colTip: c => fmtDateLong(c.key), leftPad: 200 });
   });
 
   root.appendChild(hEl("div", "note mt12", "Production is keyed on the compounding date (Actual Yield); actual releases on the Date Approved for Release (Total Count Released). Yellow projects releasable units for scheduled/in-testing lots on their Expected Release Date — or, when the log has none, on the compound date plus the typical testing lead (~" + exp.lead + " days). Scheduled lots use theoretical yield (260) less the testing draw, so treat yellow as planning estimates, not commitments. Page with ◀ Older / Newer ▶ to move across history and the upcoming schedule."));
 }
 
+/* ---------------- Orderly - SP (B3/B5 products, by fulfillment SKU) ---------------- */
+function renderOrderlySP() {
+  const root = document.getElementById("tab-orderlysp");
+  if (!root) return;
+  root.replaceChildren();
+
+  const skus = pipeSkus().filter(isB35);
+  const b35 = batches.filter(isB35);
+
+  const intro = card("Orderly · Sterile Production — B3/B5 products",
+    "Tirzepatide and Semaglutide with Niacinamide (B3) + Dexpanthenol (B5), summarized by fulfillment SKU. Use the Names toggle (top-right) to switch labels between lab and fulfillment nomenclature.");
+  root.appendChild(intro);
+  if (!skus.length) { intro.appendChild(hEl("div", "note mt8", "No B3/B5 batches in the current data yet.")); return; }
+
+  // ---- KPI row (B3/B5 only) ----
+  const produced = b35.filter(isProduced);
+  const filledU = produced.reduce((a, b) => a + (b.filled || 0), 0);
+  const releasedU = produced.reduce((a, b) => a + (b.released || 0), 0);
+  const ry = releaseYield(b35);
+  const pend = b35.filter(b => b.status === "pending");
+  const awaiting = pend.reduce((a, b) => a + Math.max(0, (b.filled || 0) - (b.tested || 0)), 0);
+  const kpis = hEl("div", "grid kpis"); kpis.style.marginTop = "14px";
+  const tile = (label, val, sub, crit) => {
+    const t = hEl("div", "card tile");
+    t.appendChild(hEl("div", "tlabel", label));
+    const v = hEl("div", "tvalue", val); if (crit) v.style.color = cssVar("status-crit"); t.appendChild(v);
+    if (sub) t.appendChild(hEl("div", "tdelta", sub));
+    return t;
+  };
+  kpis.appendChild(tile("Fulfillment SKUs", String(skus.length), b35.length + " lots on record"));
+  kpis.appendChild(tile("Units filled", fmtInt(filledU), produced.length + " produced lots"));
+  kpis.appendChild(tile("Units released", fmtInt(releasedU), ry != null ? fmtPct(ry) + " release yield" : "—"));
+  kpis.appendChild(tile("Awaiting QA release", fmtInt(awaiting), pend.length + " lots in testing"));
+  root.appendChild(kpis);
+
+  // ---- Summary table by fulfillment SKU (doubles as lab↔fulfillment mapping) ----
+  const agg = new Map();
+  for (const b of b35) {
+    const k = pipeSkuKey(b);
+    if (!agg.has(k)) agg.set(k, { n: 0, filled: 0, released: 0, awaiting: 0, last: null, exp: null });
+    const r = agg.get(k);
+    r.n++;
+    if (isProduced(b)) { r.filled += b.filled || 0; if (!r.last || b.date > r.last) r.last = b.date; }
+    r.released += b.released || 0;
+    if (b.status === "pending") r.awaiting += Math.max(0, (b.filled || 0) - (b.tested || 0));
+    if (b.status !== "released" && b.status !== "rejected" && b.expRelease && (!r.exp || b.expRelease < r.exp)) r.exp = b.expRelease;
+  }
+  const sc = card("Product summary by SKU", "Each fulfillment SKU = formula + strength + vial volume. Lab and fulfillment names shown side by side.");
+  const wrap = hEl("div", "scroll-x mt8");
+  const table = hEl("table", "data");
+  const thead = document.createElement("thead"); const hr = document.createElement("tr");
+  for (const [h, cls] of [["Lab name", ""], ["Fulfillment SKU", ""], ["Vial", "num"], ["Lots", "num"], ["Filled", "num"], ["Released", "num"], ["Awaiting QA", "num"], ["Last compounded", ""], ["Next exp. release", ""]]) {
+    const th = document.createElement("th"); th.textContent = h; if (cls) th.className = cls; hr.appendChild(th);
+  }
+  thead.appendChild(hr); table.appendChild(thead);
+  const tbody = document.createElement("tbody");
+  for (const s of skus) {
+    const r = agg.get(s.key) || { n: 0, filled: 0, released: 0, awaiting: 0, last: null, exp: null };
+    const tr = document.createElement("tr");
+    const lab = hEl("td", null, labName(s));
+    const ful = hEl("td", null, fulfillmentName(s)); ful.style.fontVariantNumeric = "tabular-nums";
+    tr.appendChild(lab); tr.appendChild(ful);
+    const vals = [s.unitVol + " mL", fmtInt(r.n), fmtInt(r.filled), r.released ? fmtInt(r.released) : "—", r.awaiting ? fmtInt(r.awaiting) : "—"];
+    vals.forEach(v => { const td = document.createElement("td"); td.className = "num"; td.textContent = v; tr.appendChild(td); });
+    tr.appendChild(hEl("td", null, r.last ? fmtDate(r.last) : "—"));
+    tr.appendChild(hEl("td", null, r.exp ? fmtDate(r.exp) : "—"));
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody); wrap.appendChild(table); sc.appendChild(wrap);
+  sc.style.marginTop = "14px"; root.appendChild(sc);
+
+  // ---- Weekly production heatmap ----
+  const prodW = productionBySkuWeek(null);
+  const wkCols = prodW.cols.filter(w => skus.some(s => prodW.get(s.key, w) > 0)).map(w => ({ key: w, label: fmtDateShort(w) }));
+  const wkRows = skus.filter(s => wkCols.some(c => prodW.get(s.key, c.key) > 0));
+  const wc = card("Weekly production by SKU", "Units filled (actual yield) by compounding week · darker = more units");
+  wc.style.marginTop = "14px";
+  const wch = hEl("div", "chart-wrap scroll-x"); wc.appendChild(wch); root.appendChild(wc);
+  requestAnimationFrame(() => {
+    if (!wkRows.length) { wch.appendChild(hEl("div", "note", "No production yet.")); return; }
+    heatmap(wch, wkRows, wkCols, (k, w) => prodW.get(k, w), { fmt: fmtInt, colTip: c => fmtWeek(c.key), minColW: 60, leftPad: 200 });
+  });
+
+  // ---- Daily production heatmap ----
+  const prodD = productionBySkuDay(null);
+  const dCols = prodD.cols.filter(d => skus.some(s => prodD.get(s.key, d) > 0)).map(d => ({ key: d, label: fmtDateShort(d) }));
+  const dRows = skus.filter(s => dCols.some(c => prodD.get(s.key, c.key) > 0));
+  const dc = card("Daily production by SKU", "Units filled (actual yield) by compounding date");
+  dc.style.marginTop = "14px";
+  const dch = hEl("div", "chart-wrap scroll-x"); dc.appendChild(dch); root.appendChild(dc);
+  requestAnimationFrame(() => {
+    if (!dRows.length) { dch.appendChild(hEl("div", "note", "No production yet.")); return; }
+    heatmap(dch, dRows, dCols, (k, d) => prodD.get(k, d), { fmt: fmtInt, colTip: c => fmtDateLong(c.key), minColW: 52, leftPad: 200 });
+  });
+
+  // ---- Expected release heatmap (released blue + expected/scheduled yellow) ----
+  const rel = releasesBySkuDay(null);
+  const exp = expectedReleasesBySkuDay();
+  const relDays = [...new Set([...rel.cols, ...exp.days])].sort()
+    .filter(d => skus.some(s => rel.get(s.key, d) > 0 || exp.get(s.key, d) > 0));
+  const cellVal = (k, d) => {
+    const a = rel.get(k, d); if (a > 0) return { value: a, kind: "seq" };
+    const e = exp.get(k, d); if (e > 0) return { value: e, kind: "warn" };
+    return { value: 0, kind: "seq" };
+  };
+  const relRows = skus.filter(s => relDays.some(d => rel.get(s.key, d) > 0 || exp.get(s.key, d) > 0));
+  const rc = card("Expected release by SKU", "Blue = released (QA-approved), by Date Approved for Release. Yellow = scheduled / expected release (not yet produced or still in testing), on the log's Expected Release Date or a projected date.");
+  rc.style.marginTop = "14px";
+  const leg = hEl("div", "legend");
+  const mk = (color, txt) => { const li = hEl("span", "li"); const sw = hEl("span", "sw"); sw.style.background = color; li.appendChild(sw); li.appendChild(hEl("span", null, txt)); return li; };
+  leg.appendChild(mk(cssVar("series-1"), "Released (actual)"));
+  leg.appendChild(mk(cssVar("status-warn"), "Scheduled / expected"));
+  rc.appendChild(leg);
+  const rch = hEl("div", "chart-wrap scroll-x"); rc.appendChild(rch); root.appendChild(rc);
+  requestAnimationFrame(() => {
+    if (!relRows.length || !relDays.length) { rch.appendChild(hEl("div", "note", "No releases or scheduled lots yet.")); return; }
+    heatmap(rch, relRows, relDays.map(d => ({ key: d, label: fmtDateShort(d) })), cellVal, { fmt: fmtInt, colTip: c => fmtDateLong(c.key), minColW: 52, leftPad: 200 });
+  });
+
+  root.appendChild(hEl("div", "note mt12", "Scoped to B3/B5 products only. Production keys on the compounding date (Actual Yield); releases on the Date Approved for Release (Total Count Released). Yellow projects releasable units for scheduled/in-testing lots on their Expected Release Date, or compound date + typical lead (~" + exp.lead + " days) when none is logged."));
+}
+
 function renderAll() {
-  renderDashboard(); renderBatches(); renderCosts(); renderSkuPipeline(); renderTargets(); renderReportTab();
+  renderDashboard(); renderBatches(); renderCosts(); renderSkuPipeline(); renderOrderlySP(); renderTargets(); renderReportTab();
 }
 document.getElementById("tabs").addEventListener("click", ev => {
   const b = ev.target.closest("button[data-tab]");
   if (!b) return;
   state.tab = b.dataset.tab;
   document.querySelectorAll("#tabs button").forEach(x => x.classList.toggle("active", x === b));
-  for (const t of ["dashboard", "batches", "costs", "skupipe", "targets", "report"])
+  for (const t of ["dashboard", "batches", "costs", "skupipe", "orderlysp", "targets", "report"])
     document.getElementById("tab-" + t).classList.toggle("hidden", t !== state.tab);
+  renderAll();
+});
+/* Lab / Fulfillment nomenclature toggle */
+document.getElementById("name-mode").addEventListener("click", ev => {
+  const b = ev.target.closest("button[data-mode]");
+  if (!b) return;
+  setNameMode(b.dataset.mode);
+  document.querySelectorAll("#name-mode button").forEach(x => x.classList.toggle("active", x.dataset.mode === NAME_MODE));
   renderAll();
 });
 document.getElementById("btn-theme").addEventListener("click", () => {
@@ -504,6 +638,8 @@ window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer
 
 document.getElementById("btn-refresh").addEventListener("click", manualRefresh);
 
+loadNameMode();
+document.querySelectorAll("#name-mode button").forEach(x => x.classList.toggle("active", x.dataset.mode === NAME_MODE));
 const _persisted = loadPersisted();
 if (!(_persisted && applyState(_persisted))) loadLogSnapshot();
 updateSaveStatus();

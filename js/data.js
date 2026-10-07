@@ -10,22 +10,60 @@ const DEFAULT_FILL_VOL = 2.3;
 const DEFAULT_ADD_CONC = 0.5;
 
 const LINES = {
-  GLY: { name: "Tirzepatide + Glycine", short: "TZ + Glycine", color: "series-1" },
-  B12: { name: "Tirzepatide + B12",     short: "TZ + B12",     color: "series-2" },
-  SEM: { name: "Semaglutide + Glycine", short: "Sema + Glycine", color: "series-3" },
+  GLY:  { name: "Tirzepatide + Glycine", short: "TZ + Glycine", color: "series-1" },
+  B12:  { name: "Tirzepatide + B12",     short: "TZ + B12",     color: "series-2" },
+  SEM:  { name: "Semaglutide + Glycine", short: "Sema + Glycine", color: "series-3" },
+  TB35: { name: "Tirzepatide + B3/B5 (Niacinamide + Dexpanthenol)", short: "TZ + B3/B5", color: "series-5" },
+  SB35: { name: "Semaglutide + B3/B5 (Niacinamide + Dexpanthenol)", short: "Sema + B3/B5", color: "series-6" },
 };
+const B35_LINES = ["TB35", "SB35"];
+function isB35(b) { return b.line === "TB35" || b.line === "SB35"; }
+
+/* ---- Product-name nomenclature: lab vs fulfillment ----
+   Fulfillment SKU encodes per-container totals (per-mL strength × vial volume).
+   e.g. Tirz B3/B5 10/5/10 mg/mL @ 2 mL → TZT/B(3)/B(5)20/10/20U. */
+let NAME_MODE = "lab";
+const NAME_MODE_KEY = "iptracker_namemode";
+function loadNameMode() {
+  try { const v = localStorage.getItem(NAME_MODE_KEY); if (v === "lab" || v === "fulfillment") NAME_MODE = v; } catch (e) {}
+}
+function setNameMode(m) { NAME_MODE = (m === "fulfillment") ? "fulfillment" : "lab"; try { localStorage.setItem(NAME_MODE_KEY, NAME_MODE); } catch (e) {} }
+function fmtVol(v) { return (v == null ? "" : (Number.isInteger(v) ? v : v) + " mL"); }
+function numTrim(n) { const x = Math.round(n * 100) / 100; return Number.isInteger(x) ? String(x) : String(x); }
+/* Fulfillment SKU code from a batch/SKU-like object (line, strength, niac, dexp, unitVol). */
+function fulfillmentName(o) {
+  const vol = o.unitVol || DEFAULT_UNIT_VOL;
+  const g = perML => numTrim((perML || 0) * vol);          // per-container total
+  switch (o.line) {
+    case "GLY":  return "TZT/GLCN" + g(o.strength) + "/1U";
+    case "B12":  return "TZT/B(12)" + g(o.strength) + "/1U";
+    case "SEM":  return "SG/GLCN" + g(o.strength) + "/1U";
+    case "TB35": return "TZT/B(3)/B(5)" + g(o.strength) + "/" + g(o.niac) + "/" + g(o.dexp) + "U";
+    case "SB35": return "SG/B(3)/B(5)" + g(o.strength) + "/" + g(o.niac) + "/" + g(o.dexp) + "U";
+    default:     return LINES[o.line] ? LINES[o.line].short : String(o.line);
+  }
+}
+/* Lab-nomenclature name for a batch/SKU-like object. */
+function labName(o) {
+  const base = LINES[o.line] ? LINES[o.line].short : String(o.line);
+  if (o.line === "TB35" || o.line === "SB35") {
+    const str = [o.strength, o.niac, o.dexp].map(x => x == null ? "?" : x).join("/");
+    return base + " " + str + (o.unitVol ? " · " + fmtVol(o.unitVol) : "");
+  }
+  return base + (o.strength != null ? " " + o.strength + "/" + o.addConc : "");
+}
+/* Mode-aware display name — used everywhere a product/SKU is named. */
+function displayName(o) { return NAME_MODE === "fulfillment" ? fulfillmentName(o) : labName(o); }
 const STATUS_LABELS = {
   released: "released", pending: "in testing", rejected: "rejected",
   validation: "validation", scheduled: "scheduled",
 };
 
-function productLabel(b) {
-  return LINES[b.line].short + " " + (b.strength != null ? b.strength + "/" + b.addConc + " mg/mL" : "");
-}
-function skuKey(b) { return b.line + "-" + b.strength + "-" + b.unitVol; }
+function productLabel(b) { return displayName(b); }
+function skuKey(b) { return b.line + "-" + b.strength + "-" + (b.niac ?? "") + "-" + (b.dexp ?? "") + "-" + b.unitVol; }
 
 const defaultAssumptions = {
-  tirzPerG:   850, semaPerG: 500, glyPerKg: 18, b12PerG: 24, wfiPerL: 0.40,
+  tirzPerG:   850, semaPerG: 500, glyPerKg: 18, b12PerG: 24, niacPerG: 2, dexpPerG: 3, wfiPerL: 0.40,
   vial: 0.42, stopper: 0.09, cap: 0.06, label: 0.04,
   laborBatch: 480, qcBatch: 350, labBatch: 450, ohBatch: 600,
 };
@@ -33,10 +71,17 @@ let A = { ...defaultAssumptions };
 
 function vialCost(b) {
   const strength = b.strength ?? 0, fillVol = b.fillVol ?? DEFAULT_FILL_VOL, addConc = b.addConc ?? DEFAULT_ADD_CONC;
-  const apiRate = b.line === "SEM" ? A.semaPerG : A.tirzPerG;
+  const apiRate = (b.line === "SEM" || b.line === "SB35") ? A.semaPerG : A.tirzPerG;
   const api = (strength * fillVol / 1000) * apiRate;
-  const addMg = addConc * fillVol;
-  const add = (b.line === "B12") ? (addMg / 1000) * A.b12PerG : (addMg / 1e6) * A.glyPerKg;
+  let add;
+  if (b.line === "TB35" || b.line === "SB35") {
+    // two actives: niacinamide (B3) + dexpanthenol (B5), each mg/mL × fill volume
+    add = ((b.niac || 0) * fillVol / 1000) * A.niacPerG + ((b.dexp || 0) * fillVol / 1000) * A.dexpPerG;
+  } else if (b.line === "B12") {
+    add = ((addConc * fillVol) / 1000) * A.b12PerG;
+  } else {
+    add = ((addConc * fillVol) / 1e6) * A.glyPerKg;
+  }
   const wfi = (fillVol / 1000) * A.wfiPerL;
   const components = A.vial + A.stopper + A.cap + A.label;
   return { api, materials: add + wfi + components };
@@ -90,7 +135,7 @@ function byWeek(list) {
   for (const b of list) {
     if (!isProduced(b)) continue;
     const wk = mondayOf(b.date);
-    if (!m.has(wk)) m.set(wk, { week: wk, filled: 0, theo: 0, tested: 0, released: 0, batches: 0, rejected: 0, rejUnits: 0, byLine: { GLY: 0, B12: 0, SEM: 0 }, cost: 0 });
+    if (!m.has(wk)) m.set(wk, { week: wk, filled: 0, theo: 0, tested: 0, released: 0, batches: 0, rejected: 0, rejUnits: 0, byLine: { GLY: 0, B12: 0, SEM: 0, TB35: 0, SB35: 0 }, cost: 0 });
     const w = m.get(wk);
     w.filled += b.filled; w.theo += b.theo || 0; w.tested += b.tested || 0; w.batches++;
     w.byLine[b.line] += b.filled;
@@ -127,21 +172,21 @@ function rejectedUnits(list) {
   return list.filter(b => b.status === "rejected").reduce((a, b) => a + (b.filled || 0), 0);
 }
 
-/* ---- SKU pipeline (line + strength + additive), for the heatmaps ---- */
-const LINE_ORDER = { GLY: 0, B12: 1, SEM: 2 };
-function pipeSkuKey(b) { return b.line + "|" + b.strength + "|" + b.addConc; }
-function pipeSkuLabel(line, strength, addConc) {
-  return LINES[line].short.replace("Tirzepatide", "TZ") + " " + strength + "/" + addConc;
-}
+/* ---- SKU pipeline (fulfillment-granular: line + strength + additives + vial volume) ---- */
+const LINE_ORDER = { GLY: 0, B12: 1, SEM: 2, TB35: 3, SB35: 4 };
+function pipeSkuKey(b) { return [b.line, b.strength, b.addConc ?? "", b.niac ?? "", b.dexp ?? "", b.unitVol ?? ""].join("|"); }
 function pipeSkus() {
   const m = new Map();
   for (const b of batches) {
     if (b.strength == null) continue;
     const k = pipeSkuKey(b);
-    if (!m.has(k)) m.set(k, { key: k, line: b.line, strength: b.strength, addConc: b.addConc, label: pipeSkuLabel(b.line, b.strength, b.addConc) });
+    if (!m.has(k)) m.set(k, { key: k, line: b.line, strength: b.strength, addConc: b.addConc, niac: b.niac, dexp: b.dexp, unitVol: b.unitVol });
   }
-  return [...m.values()].sort((a, b) =>
-    (LINE_ORDER[a.line] - LINE_ORDER[b.line]) || (a.strength - b.strength) || (a.addConc - b.addConc));
+  const out = [...m.values()];
+  for (const s of out) s.label = displayName(s);   // mode-aware; recomputed each render
+  return out.sort((a, b) =>
+    (LINE_ORDER[a.line] - LINE_ORDER[b.line]) || (a.strength - b.strength) ||
+    ((a.addConc || 0) - (b.addConc || 0)) || ((a.unitVol || 0) - (b.unitVol || 0)));
 }
 /* Weekly units filled by SKU (keyed on compound date) */
 function productionBySkuWeek(nWeeks) {
@@ -154,6 +199,18 @@ function productionBySkuWeek(nWeeks) {
   }
   let cols = [...weeks].sort(); if (nWeeks) cols = cols.slice(-nWeeks);
   return { cols, get: (k, wk) => (val.get(k) || {})[wk] || 0 };
+}
+/* Daily units filled by SKU (keyed on compound date) */
+function productionBySkuDay(nDays) {
+  const days = new Set(); const val = new Map();
+  for (const b of batches) {
+    if (!isProduced(b) || b.strength == null) continue;
+    days.add(b.date);
+    const k = pipeSkuKey(b); if (!val.has(k)) val.set(k, {});
+    val.get(k)[b.date] = (val.get(k)[b.date] || 0) + (b.filled || 0);
+  }
+  let cols = [...days].sort(); if (nDays) cols = cols.slice(-nDays);
+  return { cols, get: (k, d) => (val.get(k) || {})[d] || 0 };
 }
 /* Daily released units by SKU (keyed on Date Approved for Release) */
 function releasesBySkuDay(nDays) {
