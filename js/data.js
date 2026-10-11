@@ -63,9 +63,9 @@ function productLabel(b) { return displayName(b); }
 function skuKey(b) { return b.line + "-" + b.strength + "-" + (b.niac ?? "") + "-" + (b.dexp ?? "") + "-" + b.unitVol; }
 
 const defaultAssumptions = {
-  tirzPerG:   850, semaPerG: 500, glyPerKg: 18, b12PerG: 24, niacPerG: 2, dexpPerG: 3, wfiPerL: 0.40,
-  vial: 0.42, stopper: 0.09, cap: 0.06, label: 0.04,
-  laborBatch: 480, qcBatch: 350, labBatch: 450, ohBatch: 600,
+  tirzPerG:   73, semaPerG: 80, glyPerG: 0.27, b12PerG: 126, niacPerG: 0.44, dexpPerG: 1.2, wfiPerL: 8.53,
+  vial: 1.05, stopper: 0.24, cap: 0.16, label: 0.04,
+  laborBatch: 350, qcBatch: 150, labBatch: 900, ohBatch: 300,
 };
 let A = { ...defaultAssumptions };
 
@@ -80,7 +80,7 @@ function vialCost(b) {
   } else if (b.line === "B12") {
     add = ((addConc * fillVol) / 1000) * A.b12PerG;
   } else {
-    add = ((addConc * fillVol) / 1e6) * A.glyPerKg;
+    add = ((addConc * fillVol) / 1000) * A.glyPerG;
   }
   const wfi = (fillVol / 1000) * A.wfiPerL;
   const components = A.vial + A.stopper + A.cap + A.label;
