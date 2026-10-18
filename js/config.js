@@ -27,5 +27,5 @@ window.TRACKER_CONFIG = {
   csvUrl: "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ-wbIEmJdA7OZTVPtux3CEqsNRjSeaOOx9_XMcnHtF-fjEtQqjGz2WNTk2udi32HQtkF1PQw65DK1b/pub?gid=840380198&single=true&output=csv",
 
   // How often the live view re-checks the sheet, in seconds (min 30):
-  refreshSeconds: 120,
+  refreshSeconds: 600,
 };
