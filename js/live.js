@@ -70,17 +70,13 @@ function parseLogCSV(csvText) {
     const capa = (c[20] || "").trim();
     const comment = (c[21] || "").trim();
 
-    const isB35 = /Niacinamide/i.test(name) || /De[xp]*panthenol/i.test(name);
-    let line;
-    if (isB35) line = /Semaglutide/i.test(name) ? "SB35" : "TB35";
-    else if (/Semaglutide/i.test(name)) line = "SEM";
+    let line = "GLY";
+    if (/Semaglutide/i.test(name)) line = "SEM";
     else if (/Cyanocobalamin/i.test(name)) line = "B12";
-    else line = "GLY";
-    const nums = (strengthS.match(/([\d.]+)\s*mg/g) || []).map(x => parseFloat(x));
-    const strength = nums.length ? nums[0] : null;
-    const addConc = nums.length > 1 ? nums[1] : 0.5;
-    const niac = isB35 ? (nums[1] ?? null) : null;   // B3 (niacinamide) mg/mL
-    const dexp = isB35 ? (nums[2] ?? null) : null;   // B5 (dexpanthenol) mg/mL
+    else if (/Glycine/i.test(name)) line = "GLY";
+    const sm = /([\d.]+)\s*mg\/([\d.]+)\s*mg/.exec(strengthS);
+    const strength = sm ? parseFloat(sm[1]) : null;
+    const addConc = sm ? parseFloat(sm[2]) : 0.5;
 
     let note = comment;
     if (capa && capa !== "N/A") note = (note ? note + " · " : "") + "CAPA: " + capa;
@@ -96,7 +92,7 @@ function parseLogCSV(csvText) {
 
     out.push({
       id: lot, date, formulaId: (c[2] || "").trim(), line,
-      strength, addConc, niac, dexp, unitVol, fillVol,
+      strength, addConc, unitVol, fillVol,
       theo: theo != null ? Math.round(theo) : null,
       filled: filled != null ? Math.round(filled) : null,
       tested: tested != null ? Math.round(tested) : 0,
