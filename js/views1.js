@@ -61,7 +61,7 @@ function renderDashboard() {
   }
   filters.appendChild(hEl("span", "flabel", "Product line"));
   const lineSeg = hEl("div", "seg");
-  for (const [label, v] of [["All", "ALL"], ["TZ + Glycine", "GLY"], ["TZ + B12", "B12"], ["Sema + Gly", "SEM"], ["TZ B3/B5", "TB35"], ["Sema B3/B5", "SB35"]]) {
+  for (const [label, v] of [["All", "ALL"], ["TZ + Glycine", "GLY"], ["TZ + B12", "B12"], ["Sema + Gly", "SEM"], ["Sema + B12", "SB12"], ["TZ B3/B5", "TB35"], ["Sema B3/B5", "SB35"], ["Sema/TZ B3/B5", "STB35"]]) {
     const b = hEl("button", state.lineFilter === v ? "active" : "", label);
     b.addEventListener("click", () => { state.lineFilter = v; renderDashboard(); });
     lineSeg.appendChild(b);
@@ -171,8 +171,10 @@ function renderDashboard() {
     { line: "GLY", name: "TZ + Glycine", color: cssVar("series-1") },
     { line: "B12", name: "TZ + B12", color: cssVar("series-2") },
     { line: "SEM", name: "Sema + Glycine", color: cssVar("series-3") },
+    { line: "SB12", name: "Sema + B12", color: cssVar("series-7") },
     { line: "TB35", name: "TZ + B3/B5", color: cssVar("series-5") },
     { line: "SB35", name: "Sema + B3/B5", color: cssVar("series-6") },
+    { line: "STB35", name: "Sema/TZ + B3/B5 (test)", color: cssVar("series-8") },
   ];
   c2.appendChild(legendHTML(LINE_SERIES.map(s => ({ name: s.name, color: s.color }))));
   const ch2 = hEl("div", "chart-wrap"); c2.appendChild(ch2); grid.appendChild(c2);
@@ -352,7 +354,7 @@ function renderBatches() {
     const tr = document.createElement("tr");
     const cells = [
       b.id, fmtDate(b.date), NAME_MODE === "fulfillment" ? fulfillmentName(b) : LINES[b.line].short,
-      b.strength == null ? "—" : (isB35(b) ? b.strength + "/" + b.niac + "/" + b.dexp : b.strength + "/" + b.addConc),
+      strengthText(b),
       b.unitVol != null ? b.unitVol + " mL" : "—",
       b.theo != null ? fmtInt(b.theo) : "—",
       b.filled != null ? fmtInt(b.filled) : "—",

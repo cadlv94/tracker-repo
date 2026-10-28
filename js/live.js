@@ -72,15 +72,17 @@ function parseLogCSV(csvText) {
 
     const isB35 = /Niacinamide/i.test(name) || /De[xp]*panthenol/i.test(name);
     let line;
-    if (isB35) line = /Semaglutide/i.test(name) ? "SB35" : "TB35";
-    else if (/Semaglutide/i.test(name)) line = "SEM";
+    if (isB35) line = /Semaglutide/i.test(name) ? (/Tirzepatide/i.test(name) ? "STB35" : "SB35") : "TB35";
+    else if (/Semaglutide/i.test(name)) line = /Cyanocobalamin|B12/i.test(name) ? "SB12" : "SEM";
     else if (/Cyanocobalamin/i.test(name)) line = "B12";
     else line = "GLY";
     const nums = (strengthS.match(/([\d.]+)\s*mg/g) || []).map(x => parseFloat(x));
     const strength = nums.length ? nums[0] : null;
     const addConc = nums.length > 1 ? nums[1] : 0.5;
-    const niac = isB35 ? (nums[1] ?? null) : null;   // B3 (niacinamide) mg/mL
-    const dexp = isB35 ? (nums[2] ?? null) : null;   // B5 (dexpanthenol) mg/mL
+    const dual = line === "STB35";                     // Sema/Tirz/B3/B5: sema/tirz/niac/dexp
+    const tirz = dual ? (nums[1] ?? null) : null;      // tirzepatide mg/mL (dual-GLP only)
+    const niac = isB35 ? (nums[dual ? 2 : 1] ?? null) : null;   // B3 (niacinamide) mg/mL
+    const dexp = isB35 ? (nums[dual ? 3 : 2] ?? null) : null;   // B5 (dexpanthenol) mg/mL
 
     let note = comment;
     if (capa && capa !== "N/A") note = (note ? note + " · " : "") + "CAPA: " + capa;
@@ -96,7 +98,7 @@ function parseLogCSV(csvText) {
 
     out.push({
       id: lot, date, formulaId: (c[2] || "").trim(), line,
-      strength, addConc, niac, dexp, unitVol, fillVol,
+      strength, addConc, tirz, niac, dexp, unitVol, fillVol,
       theo: theo != null ? Math.round(theo) : null,
       filled: filled != null ? Math.round(filled) : null,
       tested: tested != null ? Math.round(tested) : 0,

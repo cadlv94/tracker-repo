@@ -13,11 +13,20 @@ const LINES = {
   GLY:  { name: "Tirzepatide + Glycine", short: "TZ + Glycine", color: "series-1" },
   B12:  { name: "Tirzepatide + B12",     short: "TZ + B12",     color: "series-2" },
   SEM:  { name: "Semaglutide + Glycine", short: "Sema + Glycine", color: "series-3" },
+  SB12: { name: "Semaglutide + B12",     short: "Sema + B12",     color: "series-7" },
   TB35: { name: "Tirzepatide + B3/B5 (Niacinamide + Dexpanthenol)", short: "TZ + B3/B5", color: "series-5" },
   SB35: { name: "Semaglutide + B3/B5 (Niacinamide + Dexpanthenol)", short: "Sema + B3/B5", color: "series-6" },
+  STB35: { name: "Semaglutide + Tirzepatide + B3/B5 (test)", short: "Sema/TZ + B3/B5", color: "series-8" },
 };
 const B35_LINES = ["TB35", "SB35"];
 function isB35(b) { return b.line === "TB35" || b.line === "SB35"; }
+/* Strength as written per mL: "10/5/10" (B3/B5), "1/5/5/10" (Sema/TZ/B3/B5), else "strength/additive". */
+function strengthText(o) {
+  if (o.strength == null) return "—";
+  if (o.line === "STB35") return [o.strength, o.tirz, o.niac, o.dexp].map(x => x == null ? "?" : x).join("/");
+  if (o.line === "TB35" || o.line === "SB35") return [o.strength, o.niac, o.dexp].map(x => x == null ? "?" : x).join("/");
+  return o.strength + "/" + o.addConc;
+}
 
 /* ---- Product-name nomenclature: lab vs fulfillment ----
    Fulfillment SKU encodes per-container totals (per-mL strength × vial volume).
@@ -38,17 +47,18 @@ function fulfillmentName(o) {
     case "GLY":  return "TZT/GLCN" + g(o.strength) + "/1U";
     case "B12":  return "TZT/B(12)" + g(o.strength) + "/1U";
     case "SEM":  return "SG/GLCN" + g(o.strength) + "/1U";
+    case "SB12": return "SG/B(12)" + g(o.strength) + "/1U";
     case "TB35": return "TZT/B(3)/B(5)" + g(o.strength) + "/" + g(o.niac) + "/" + g(o.dexp) + "U";
     case "SB35": return "SG/B(3)/B(5)" + g(o.strength) + "/" + g(o.niac) + "/" + g(o.dexp) + "U";
+    case "STB35": return "SG/TIRZ TEST";
     default:     return LINES[o.line] ? LINES[o.line].short : String(o.line);
   }
 }
 /* Lab-nomenclature name for a batch/SKU-like object. */
 function labName(o) {
   const base = LINES[o.line] ? LINES[o.line].short : String(o.line);
-  if (o.line === "TB35" || o.line === "SB35") {
-    const str = [o.strength, o.niac, o.dexp].map(x => x == null ? "?" : x).join("/");
-    return base + " " + str + (o.unitVol ? " · " + fmtVol(o.unitVol) : "");
+  if (o.line === "TB35" || o.line === "SB35" || o.line === "STB35") {
+    return base + " " + strengthText(o) + (o.unitVol ? " · " + fmtVol(o.unitVol) : "");
   }
   return base + (o.strength != null ? " " + o.strength + "/" + o.addConc : "");
 }
@@ -60,7 +70,7 @@ const STATUS_LABELS = {
 };
 
 function productLabel(b) { return displayName(b); }
-function skuKey(b) { return b.line + "-" + b.strength + "-" + (b.niac ?? "") + "-" + (b.dexp ?? "") + "-" + b.unitVol; }
+function skuKey(b) { return b.line + "-" + b.strength + "-" + (b.tirz ?? "") + "-" + (b.niac ?? "") + "-" + (b.dexp ?? "") + "-" + b.unitVol; }
 
 const defaultAssumptions = {
   tirzPerG:   73, semaPerG: 80, glyPerG: 0.27, b12PerG: 126, niacPerG: 0.44, dexpPerG: 1.2, wfiPerL: 8.53,
@@ -71,13 +81,14 @@ let A = { ...defaultAssumptions };
 
 function vialCost(b) {
   const strength = b.strength ?? 0, fillVol = b.fillVol ?? DEFAULT_FILL_VOL, addConc = b.addConc ?? DEFAULT_ADD_CONC;
-  const apiRate = (b.line === "SEM" || b.line === "SB35") ? A.semaPerG : A.tirzPerG;
-  const api = (strength * fillVol / 1000) * apiRate;
+  const apiRate = (b.line === "SEM" || b.line === "SB12" || b.line === "SB35" || b.line === "STB35") ? A.semaPerG : A.tirzPerG;
+  let api = (strength * fillVol / 1000) * apiRate;
+  if (b.line === "STB35") api += ((b.tirz || 0) * fillVol / 1000) * A.tirzPerG;   // dual GLP: + tirzepatide
   let add;
-  if (b.line === "TB35" || b.line === "SB35") {
+  if (b.line === "TB35" || b.line === "SB35" || b.line === "STB35") {
     // two actives: niacinamide (B3) + dexpanthenol (B5), each mg/mL × fill volume
     add = ((b.niac || 0) * fillVol / 1000) * A.niacPerG + ((b.dexp || 0) * fillVol / 1000) * A.dexpPerG;
-  } else if (b.line === "B12") {
+  } else if (b.line === "B12" || b.line === "SB12") {
     add = ((addConc * fillVol) / 1000) * A.b12PerG;
   } else {
     add = ((addConc * fillVol) / 1000) * A.glyPerG;
@@ -135,7 +146,7 @@ function byWeek(list) {
   for (const b of list) {
     if (!isProduced(b)) continue;
     const wk = mondayOf(b.date);
-    if (!m.has(wk)) m.set(wk, { week: wk, filled: 0, theo: 0, tested: 0, released: 0, batches: 0, rejected: 0, rejUnits: 0, byLine: { GLY: 0, B12: 0, SEM: 0, TB35: 0, SB35: 0 }, cost: 0 });
+    if (!m.has(wk)) m.set(wk, { week: wk, filled: 0, theo: 0, tested: 0, released: 0, batches: 0, rejected: 0, rejUnits: 0, byLine: { GLY: 0, B12: 0, SEM: 0, SB12: 0, TB35: 0, SB35: 0, STB35: 0 }, cost: 0 });
     const w = m.get(wk);
     w.filled += b.filled; w.theo += b.theo || 0; w.tested += b.tested || 0; w.batches++;
     w.byLine[b.line] += b.filled;
@@ -173,14 +184,14 @@ function rejectedUnits(list) {
 }
 
 /* ---- SKU pipeline (fulfillment-granular: line + strength + additives + vial volume) ---- */
-const LINE_ORDER = { GLY: 0, B12: 1, SEM: 2, TB35: 3, SB35: 4 };
-function pipeSkuKey(b) { return [b.line, b.strength, b.addConc ?? "", b.niac ?? "", b.dexp ?? "", b.unitVol ?? ""].join("|"); }
+const LINE_ORDER = { GLY: 0, B12: 1, SEM: 2, SB12: 3, TB35: 4, SB35: 5, STB35: 6 };
+function pipeSkuKey(b) { return [b.line, b.strength, b.addConc ?? "", b.tirz ?? "", b.niac ?? "", b.dexp ?? "", b.unitVol ?? ""].join("|"); }
 function pipeSkus() {
   const m = new Map();
   for (const b of batches) {
     if (b.strength == null) continue;
     const k = pipeSkuKey(b);
-    if (!m.has(k)) m.set(k, { key: k, line: b.line, strength: b.strength, addConc: b.addConc, niac: b.niac, dexp: b.dexp, unitVol: b.unitVol });
+    if (!m.has(k)) m.set(k, { key: k, line: b.line, strength: b.strength, addConc: b.addConc, tirz: b.tirz, niac: b.niac, dexp: b.dexp, unitVol: b.unitVol });
   }
   const out = [...m.values()];
   for (const s of out) s.label = displayName(s);   // mode-aware; recomputed each render

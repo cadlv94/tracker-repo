@@ -11,7 +11,7 @@ function activeSkus() {
   for (const b of batches) {
     if (b.strength == null) continue;
     const k = skuKey(b);
-    if (!m.has(k)) m.set(k, { line: b.line, strength: b.strength, addConc: b.addConc, niac: b.niac, dexp: b.dexp, unitVol: b.unitVol, fillVol: b.fillVol, theo: b.theo || DEFAULT_THEO, n: 0 });
+    if (!m.has(k)) m.set(k, { line: b.line, strength: b.strength, addConc: b.addConc, tirz: b.tirz, niac: b.niac, dexp: b.dexp, unitVol: b.unitVol, fillVol: b.fillVol, theo: b.theo || DEFAULT_THEO, n: 0 });
     m.get(k).n++;
   }
   return [...m.values()].sort((a, b) => (LINE_ORDER[a.line] - LINE_ORDER[b.line]) || (a.strength - b.strength) || ((a.unitVol || 0) - (b.unitVol || 0)));
@@ -26,7 +26,7 @@ function renderCosts() {
   const fields = [
     ["tirzPerG", "Tirzepatide API", "$/g"],
     ["semaPerG", "Semaglutide API", "$/g"],
-    ["glyPerKg", "Glycine", "$/kg"],
+    ["glyPerG", "Glycine", "$/g"],
     ["b12PerG", "Vitamin B12", "$/g"],
     ["niacPerG", "Niacinamide (B3)", "$/g"],
     ["dexpPerG", "Dexpanthenol (B5)", "$/g"],
@@ -67,7 +67,7 @@ function renderCosts() {
   const chData = skus.map(s => {
     const bc = batchCost(s);
     const units = s.theo;
-    const strTxt = isB35(s) ? s.strength + "/" + s.niac + "/" + s.dexp : s.strength + "/" + s.addConc;
+    const strTxt = strengthText(s);
     return {
       label: displayName(s),
       tipTitle: LINES[s.line].name + " " + strTxt + " mg/mL · " + s.unitVol + " mL vial · " + fulfillmentName(s),
@@ -89,12 +89,12 @@ function renderCosts() {
   for (const s of skus) {
     const bc = batchCost(s); const units = s.theo;
     const apiMg = s.strength * (s.fillVol || DEFAULT_FILL_VOL);
-    const strTxt = isB35(s) ? s.strength + "/" + s.niac + "/" + s.dexp : s.strength + "/" + s.addConc;
+    const strTxt = strengthText(s);
     const tr = document.createElement("tr");
     const vals = [
       (NAME_MODE === "fulfillment" ? fulfillmentName(s) : LINES[s.line].name + " " + strTxt + " mg/mL"),
       s.unitVol + " mL (fill " + s.fillVol + ")",
-      apiMg.toFixed(1) + " mg",
+      s.line === "STB35" ? apiMg.toFixed(1) + " sema + " + ((s.tirz || 0) * (s.fillVol || DEFAULT_FILL_VOL)).toFixed(1) + " TZ mg" : apiMg.toFixed(1) + " mg",
       fmtMoney(bc.api / units), fmtMoney(bc.materials / units),
       fmtMoney(bc.laborQc / units), fmtMoney(bc.overhead / units),
       fmtMoney(bc.total / units), fmtMoney0(bc.total), fmtInt(s.n),
@@ -241,7 +241,7 @@ function renderReportTab() {
 function buildWeeklyReport(week) {
   const wEnd = addDays(week, 6);
   const list = batches.filter(b => b.date >= week && b.date <= wEnd && isProduced(b));
-  const w = byWeek(list)[0] || { filled: 0, theo: 0, tested: 0, released: 0, relFilled: 0, relTested: 0, batches: 0, rejected: 0, byLine: { GLY: 0, B12: 0, SEM: 0 }, cost: 0 };
+  const w = byWeek(list)[0] || { filled: 0, theo: 0, tested: 0, released: 0, relFilled: 0, relTested: 0, batches: 0, rejected: 0, byLine: { GLY: 0, B12: 0, SEM: 0, SB12: 0, TB35: 0, SB35: 0, STB35: 0 }, cost: 0 };
   const box = hEl("div", "report-body");
 
   const hd = hEl("div", "rep-head");
