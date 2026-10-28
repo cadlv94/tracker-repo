@@ -69,8 +69,25 @@ refresh the browser. No compile step.
 | `js/live.js` | Fetches & parses the published CSV, drives the sync-status pill, handles downloads. |
 | `js/charts.js` | Hand-rolled SVG charts (columns, lines, stacked, overlay, heatmap, sparkline). |
 | `js/views1.js` | Dashboard + Batch Log tabs. |
-| `js/views2.js` | Costs, SKU Pipeline, Targets & Forecast, Weekly Report tabs; app init. |
+| `js/views2.js` | Costs, SKU Pipeline, **Orderly - SP**, Targets & Forecast, Weekly Report tabs; app init. |
 | `data/production-log-snapshot.csv` | A CSV copy of the log at bundle time, for reference. |
+
+### Products & nomenclature
+
+The tracker recognizes five product lines: TZ + Glycine, TZ + B12, Sema + Glycine, and the
+two **B3/B5** families — **TZ + B3/B5** and **Sema + B3/B5** (Niacinamide + Dexpanthenol).
+They flow through the dashboard, filters, charts, SKU pipeline, costs and reports like any
+other line.
+
+The header **Names: Lab / Fulfillment** toggle flips every product/SKU label between lab
+nomenclature (formula + strength) and fulfillment nomenclature. Fulfillment SKUs are computed
+as per-container totals — the per-mL strength of each active × the vial volume — e.g. Tirz
+B3/B5 `10/5/10 mg/mL` in a 2 mL vial → `TZT/B(3)/B(5)20/10/20U`. The choice is remembered per
+browser.
+
+The **Orderly - SP** tab is a focused view of just the B3/B5 products, summarized by
+fulfillment SKU: a lab↔fulfillment mapping table plus weekly production, daily production, and
+expected-release heatmaps (blue = released, yellow = scheduled / expected).
 
 To refresh the **offline snapshot** so it isn't stale, replace `data/production-log-snapshot.csv`
 with a fresh export and regenerate `js/snapshot.js` from it (the `LOG_DATA` array is just

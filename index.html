@@ -19,6 +19,8 @@
     --series-2:       #eb6834;
     --series-3:       #1baf7a;
     --series-4:       #eda100;
+    --series-5:       #8b5cf6;
+    --series-6:       #d6458f;
     --seq-250:        #86b6ef;
     --seq-150:        #b7d3f6;
     --status-good:    #0ca30c;
@@ -42,6 +44,8 @@
     --series-2:       #d95926;
     --series-3:       #199e70;
     --series-4:       #c98500;
+    --series-5:       #8b6ee8;
+    --series-6:       #d44f93;
     --seq-250:        #1c5cab;
     --seq-150:        #184f95;
     --delta-good:     #0ca30c;
@@ -62,6 +66,8 @@
       --series-2:       #d95926;
       --series-3:       #199e70;
       --series-4:       #c98500;
+      --series-5:       #8b6ee8;
+      --series-6:       #d44f93;
       --seq-250:        #1c5cab;
       --seq-150:        #184f95;
       --delta-good:     #0ca30c;
@@ -85,6 +91,8 @@
   header.top h1 { font-size: 21px; font-weight: 650; margin: 0 0 2px; letter-spacing: -0.01em; }
   header.top .sub { color: var(--text-secondary); font-size: 13px; }
   .hdr-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; max-width: 620px; }
+  .namemode { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .namemode .flabel { color: var(--text-muted); font-size: 12px; }
   .save-status { font-size: 12px; color: var(--text-secondary); display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; margin-right: 2px; }
   .save-status .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--status-good); display: inline-block; flex: none; }
   .save-status.session .dot { background: var(--status-warn); }
@@ -263,6 +271,13 @@
       <button class="btn" id="btn-export" title="Export the batch log as CSV">Export CSV</button>
       <button class="btn" id="btn-import" title="Import a batch-log CSV">Import CSV</button>
       <input type="file" id="file-import" accept=".csv" class="hidden">
+      <span class="namemode" title="Show product names in lab or fulfillment nomenclature">
+        <span class="flabel">Names</span>
+        <span class="seg" id="name-mode">
+          <button data-mode="lab" class="active">Lab</button>
+          <button data-mode="fulfillment">Fulfillment</button>
+        </span>
+      </span>
       <button class="btn" id="btn-theme" title="Toggle light/dark">◐</button>
     </div>
   </header>
@@ -272,6 +287,7 @@
     <button data-tab="batches">Batch Log</button>
     <button data-tab="costs">Costs</button>
     <button data-tab="skupipe">SKU Pipeline</button>
+    <button data-tab="orderlysp">Orderly - SP</button>
     <button data-tab="targets">Targets &amp; Forecast</button>
     <button data-tab="report">Weekly Report</button>
   </nav>
@@ -280,6 +296,7 @@
   <section id="tab-batches" class="hidden"></section>
   <section id="tab-costs" class="hidden"></section>
   <section id="tab-skupipe" class="hidden"></section>
+  <section id="tab-orderlysp" class="hidden"></section>
   <section id="tab-targets" class="hidden"></section>
   <section id="tab-report" class="hidden"></section>
 </div>
