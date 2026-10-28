@@ -74,8 +74,9 @@ refresh the browser. No compile step.
 
 ### Products & nomenclature
 
-The tracker recognizes five product lines: TZ + Glycine, TZ + B12, Sema + Glycine, and the
-two **B3/B5** families — **TZ + B3/B5** and **Sema + B3/B5** (Niacinamide + Dexpanthenol).
+The tracker recognizes seven product lines: TZ + Glycine, TZ + B12, Sema + Glycine, Sema + B12, and the
+two **B3/B5** families — **TZ + B3/B5** and **Sema + B3/B5** (Niacinamide + Dexpanthenol). The dual-GLP test formula **Sema/TZ + B3/B5** (Semaglutide + Tirzepatide +
+Niacinamide + Dexpanthenol) is its own line; its fulfillment name is `SG/TIRZ TEST`.
 They flow through the dashboard, filters, charts, SKU pipeline, costs and reports like any
 other line.
 
