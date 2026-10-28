@@ -61,7 +61,7 @@ function renderDashboard() {
   }
   filters.appendChild(hEl("span", "flabel", "Product line"));
   const lineSeg = hEl("div", "seg");
-  for (const [label, v] of [["All", "ALL"], ["TZ + Glycine", "GLY"], ["TZ + B12", "B12"], ["Sema", "SEM"]]) {
+  for (const [label, v] of [["All", "ALL"], ["TZ + Glycine", "GLY"], ["TZ + B12", "B12"], ["Sema + Gly", "SEM"], ["TZ B3/B5", "TB35"], ["Sema B3/B5", "SB35"]]) {
     const b = hEl("button", state.lineFilter === v ? "active" : "", label);
     b.addEventListener("click", () => { state.lineFilter = v; renderDashboard(); });
     lineSeg.appendChild(b);
@@ -167,19 +167,18 @@ function renderDashboard() {
   }));
 
   const c2 = card("Output by product line", "Units filled per week, stacked");
-  c2.appendChild(legendHTML([
-    { name: "TZ + Glycine", color: cssVar("series-1") },
-    { name: "TZ + B12", color: cssVar("series-2") },
-    { name: "Sema + Glycine", color: cssVar("series-3") },
-  ]));
+  const LINE_SERIES = [
+    { line: "GLY", name: "TZ + Glycine", color: cssVar("series-1") },
+    { line: "B12", name: "TZ + B12", color: cssVar("series-2") },
+    { line: "SEM", name: "Sema + Glycine", color: cssVar("series-3") },
+    { line: "TB35", name: "TZ + B3/B5", color: cssVar("series-5") },
+    { line: "SB35", name: "Sema + B3/B5", color: cssVar("series-6") },
+  ];
+  c2.appendChild(legendHTML(LINE_SERIES.map(s => ({ name: s.name, color: s.color }))));
   const ch2 = hEl("div", "chart-wrap"); c2.appendChild(ch2); grid.appendChild(c2);
   const mixData = byWeek(filteredBatches("ALL", null)).slice(-8).map(w => ({
     label: fmtDate(w.week), tipTitle: fmtWeek(w.week),
-    parts: [
-      { name: "TZ + Glycine", value: w.byLine.GLY, color: cssVar("series-1") },
-      { name: "TZ + B12", value: w.byLine.B12, color: cssVar("series-2") },
-      { name: "Sema + Glycine", value: w.byLine.SEM, color: cssVar("series-3") },
-    ],
+    parts: LINE_SERIES.map(s => ({ name: s.name, value: w.byLine[s.line] || 0, color: s.color })),
   }));
   requestAnimationFrame(() => stackedColumns(ch2, mixData, {}));
 
@@ -352,8 +351,8 @@ function renderBatches() {
   for (const b of recent) {
     const tr = document.createElement("tr");
     const cells = [
-      b.id, fmtDate(b.date), LINES[b.line].short,
-      b.strength != null ? b.strength + "/" + b.addConc : "—",
+      b.id, fmtDate(b.date), NAME_MODE === "fulfillment" ? fulfillmentName(b) : LINES[b.line].short,
+      b.strength == null ? "—" : (isB35(b) ? b.strength + "/" + b.niac + "/" + b.dexp : b.strength + "/" + b.addConc),
       b.unitVol != null ? b.unitVol + " mL" : "—",
       b.theo != null ? fmtInt(b.theo) : "—",
       b.filled != null ? fmtInt(b.filled) : "—",

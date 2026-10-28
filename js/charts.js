@@ -331,7 +331,7 @@ function heatmap(container, rows, cols, getVal, opts) {
   const colorFor = (v, kind) => v > 0 ? (RAMPS[kind] || RAMPS.seq)[Math.min(6, Math.round((v / maxV) * 6))] : cssVar("page");
   const inkFor = hex => _relLum(hex) < 0.5 ? "#fff" : cssVar("text-primary");
   const kindName = opts.kindLabel || { seq: "", warn: " · expected" };
-  const leftPad = 132, topPad = 34, rightPad = rowTotals ? 58 : 12, botPad = colTotals ? 28 : 8;
+  const leftPad = opts.leftPad || 132, topPad = 34, rightPad = rowTotals ? 58 : 12, botPad = colTotals ? 28 : 8;
   const rowH = 22, gap = 2, minColW = opts.minColW || 48;
   const avail = Math.max(480, container.clientWidth || 700);
   const nc = cols.length || 1;
